@@ -1,19 +1,25 @@
 // The rest of the building outside your unit: a front door, a corridor with an elevator and
-// neighbours' doors, and a shared co-working lounge where two friends are coding.
+// neighbours' doors, a co-working lounge where two friends are coding, and two bathrooms.
 //
 // Floor plan (x to the right, z toward the bottom, city side at the top):
 //
-//   z=-3  ┌────────── condo ──────────┐   ┌──────── lounge ────────┐
-//         │                           │   │  desk   desk   desk    │
-//   z= 3  └──────[door]───────────────┘   │                        │
-//         ══ elevator ══ corridor ════════╧  sofa                  │
-//   z= 5  ──────────────────────────────────────────────────────────
-//        x=-6        -1                4  5.4                    12.4
+//   z=-3      ┌────────── condo ──────────┐   ┌──────── lounge ────────┐
+//       ┌─────┤                           │   │  desk   desk   desk    │
+//       │bath │                           │   │ TV  sofa      table    ├─────┐
+//       └─────┤                           │   │                        │ WC  │
+//   z= 3      └──────[door]───────────────┘   │                  [door]├─────┘
+//         ══ elevator ══ corridor ══════[door]╧  pantry       bean bags│
+//   z= 5  ──────────────────────────────────────────────────────────────
+//            x=-6        -1                4  5.4                    12.4
+import { createBathroom } from './bathroom.js';
+import { createTV } from './tv.js';
 
 const HALL = { minX: -6, maxX: 5.4, minZ: 3.2, maxZ: 5.0 };
 const LOUNGE = { minX: 5.4, maxX: 12.4, minZ: -3, maxZ: 5.0 };
 const DOOR = { x0: -1.45, x1: -0.55, height: 2.1 };
-const LDOOR = { z0: 3.65, z1: 4.55 }; // the lounge door, in the wall at the corridor's east end
+const LDOOR = { z0: 3.65, z1: 4.55 };       // the lounge door, in the wall at the corridor's east end
+const HOME_BATH = { z0: -2.0, z1: 0.6, doorZ0: -1.05, doorZ1: -0.15 };   // off the condo's west wall
+const LOUNGE_BATH = { z0: 2.0, z1: 4.6, doorZ0: 2.75, doorZ1: 3.65 };    // off the lounge's east wall
 const H = 3;
 const DESK_Z = -2.45, SEAT_Z = -1.64;
 export const CO_DESK = { x: 8.9, z: DESK_Z - 0.1 }; // the free seat between the two friends
@@ -34,11 +40,14 @@ const FAKE_CODE = ['def sync(queue):', '    for job in queue:', '        if job.
   '        return self.items.get(key)', '', 'def test_sync():', '    assert sync([]) == 0', '', '# TODO: tidy this up', 'def retry(task, tries=3):', '    for _ in range(tries):', '        try:',
   '            return task()', '        except Error:', '            pass'];
 
-export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onSit, onChat, toast }) {
+// Callbacks: onSit(desk) at the shared workstation, onChat(name), onWatch(tv, eye, lookAt) on the lounge
+// sofa, onFreshen(kind, place) in a bathroom, onSnack() at the pantry.
+export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onSit, onChat, onWatch, onFreshen, onSnack, toast }) {
   const { box, slab, cyl, mat, add, canvasTexture, collide, interactive } = kit;
   // for flat things mounted on a surface (signs, screens, rugs): nudges them forward in depth so they don't flicker
   const DECAL = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
   const WALL = '#1b1b1f', HALL_WALL = '#2a2a2f', LOUNGE_WALL = '#e6e3de', WALNUT = '#6e4a32', BLACK = '#0e0e10', CEILING = '#d9d7d3';
+  const CHROME = { metalness: 0.3, roughness: 0.35 };
 
   function label(text, w, h, x, y, z, turn, { bg = '#0e0e10', fg = '#e8e6e2', size = 40, glow = false } = {}) {
     const tex = canvasTexture(256, Math.round((256 * h) / w), (g, cw, ch) => {
@@ -70,11 +79,31 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
     }
     collide(x - 0.2 * s, x + 0.2 * s, z - 0.2 * s, z + 0.2 * s);
   }
+  // a wall of constant x from zFrom to zTo, with a door-sized opening
+  function wallWithDoor(x, zFrom, zTo, doorZ0, doorZ1, color) {
+    slab(0.2, H, doorZ0 - zFrom, color, x, H / 2, (zFrom + doorZ0) / 2);
+    slab(0.2, H, zTo - doorZ1, color, x, H / 2, (doorZ1 + zTo) / 2);
+    slab(0.2, H - DOOR.height, doorZ1 - doorZ0, color, x, (H + DOOR.height) / 2, (doorZ0 + doorZ1) / 2);
+  }
+  // a three-seater that faces local +z; `turn` spins it to face the room
+  function sofa(x, z, turn, color, arm, accent) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = turn;
+    room.add(g);
+    box(2.0, 0.3, 0.85, color, 0, 0.3, 0, g, { r: 0.09 });
+    box(2.0, 0.55, 0.22, color, 0, 0.64, -0.36, g, { r: 0.09 });
+    for (const side of [-1.04, 1.04]) box(0.2, 0.42, 0.85, arm, side, 0.48, 0, g, { r: 0.08 });
+    box(0.46, 0.34, 0.14, accent, -0.55, 0.66, -0.17, g, { r: 0.065 }).rotation.x = -0.25;
+    box(0.46, 0.34, 0.14, '#e8e6e2', 0.55, 0.66, -0.17, g, { r: 0.065 }).rotation.x = -0.25;
+    return g;
+  }
 
-  // ── the condo's front wall, now with a doorway ──
+  // ── the condo's front wall, with its doorway and the strip of floor under the door ──
   slab(DOOR.x0 + 4.2, H, 0.2, WALL, (DOOR.x0 - 4.2) / 2, H / 2, 3.1);
   slab(4.2 - DOOR.x1, H, 0.2, WALL, (DOOR.x1 + 4.2) / 2, H / 2, 3.1);
   slab(DOOR.x1 - DOOR.x0, H - DOOR.height, 0.2, WALL, (DOOR.x0 + DOOR.x1) / 2, (H + DOOR.height) / 2, 3.1);
+  floor(DOOR.x0, DOOR.x1, 2.98, 3.22, '#3a3a40', 0.001);
   const doorPivot = new THREE.Group();
   doorPivot.position.set(DOOR.x0, 0, 3.1);
   room.add(doorPivot);
@@ -83,6 +112,10 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
   const door = { open: false, swing: 0 };
   interactive(doorPivot, 'door', () => (door.open ? 'Close the door' : 'Open the door'), () => { door.open = !door.open; });
   label('12A', 0.22, 0.11, DOOR.x1 + 0.3, 1.6, 3.205, 0, { size: 64 });
+
+  // ── the condo's west wall and the bathroom behind it ──
+  wallWithDoor(-4.1, -3, 3, HOME_BATH.doorZ0, HOME_BATH.doorZ1, WALL);
+  const homeBath = createBathroom({ THREE, room, kit, wallX: -4.2, dir: -1, ...HOME_BATH, shower: true, key: 'homeBath', onUse: (kind) => onFreshen(kind, homeBath) });
 
   // ── corridor ──
   floor(HALL.minX, HALL.maxX, HALL.minZ, HALL.maxZ, '#4a4d57');
@@ -103,7 +136,7 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
   const lift = new THREE.Group();
   room.add(lift);
   box(0.06, 2.3, 1.3, '#3a3a40', -5.97, 1.15, 4.1, lift, { r: 0.01 });
-  for (const z of [3.8, 4.4]) box(0.03, 2.1, 0.56, '#aeb1b7', -5.94, 1.05, z, lift, { metalness: 0.3, roughness: 0.35, r: 0.005 });
+  for (const z of [3.8, 4.4]) box(0.03, 2.1, 0.56, '#aeb1b7', -5.94, 1.05, z, lift, { ...CHROME, r: 0.005 });
   const liftButton = cyl(0.03, 0.03, 0.02, '#f2c57c', -5.95, 1.1, 3.38, lift, { emissive: '#f2c57c', emissiveIntensity: 0.4 });
   liftButton.rotation.z = Math.PI / 2;
   label('12', 0.24, 0.12, -5.93, 2.4, 4.1, Math.PI / 2, { fg: '#ff9f43', size: 60, glow: true });
@@ -117,7 +150,7 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
   // ── lounge shell: bright walls, timber floor, and its own wall of glass onto the city ──
   floor(LOUNGE.minX, LOUNGE.maxX, LOUNGE.minZ, LOUNGE.maxZ, '#b9a58c');
   slab(0.2, H, 6.4, LOUNGE_WALL, 5.4, H / 2, 0);
-  slab(0.2, H, 8.4, LOUNGE_WALL, 12.5, H / 2, 1);
+  wallWithDoor(12.5, -3.2, 5.2, LOUNGE_BATH.doorZ0, LOUNGE_BATH.doorZ1, LOUNGE_WALL);
   slab(7.2, 0.2, 8.4, CEILING, 8.9, H + 0.1, 1);
   slab(7.2, 0.35, 0.2, LOUNGE_WALL, 8.9, 0.175, -3.1);
   slab(7.2, 0.28, 0.2, LOUNGE_WALL, 8.9, H - 0.14, -3.1);
@@ -126,10 +159,14 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
   glass.position.set(8.9, 1.535, -3.1);
   room.add(glass);
   for (const [x, z] of [[7, -0.5], [10.8, -0.5], [7, 2.8], [10.8, 2.8]]) downlight(x, z);
+  const loungeLight = new THREE.PointLight('#fff1dc', 14, 12, 2);
+  loungeLight.position.set(8.9, 2.6, 0.6);
+  room.add(loungeLight);
+  // timber baffles across the ceiling
+  for (let i = 0; i < 7; i++) box(6.6, 0.16, 0.045, '#a88462', 8.9, H - 0.1, -2.3 + i * 0.5, room, { r: 0.01 });
+
   // the wall between corridor and lounge, with a glass door
-  slab(0.2, H, LDOOR.z0 - HALL.minZ, LOUNGE_WALL, 5.4, H / 2, (HALL.minZ + LDOOR.z0) / 2);
-  slab(0.2, H, HALL.maxZ - LDOOR.z1, LOUNGE_WALL, 5.4, H / 2, (LDOOR.z1 + HALL.maxZ) / 2);
-  slab(0.2, H - DOOR.height, LDOOR.z1 - LDOOR.z0, LOUNGE_WALL, 5.4, (H + DOOR.height) / 2, (LDOOR.z0 + LDOOR.z1) / 2);
+  wallWithDoor(5.4, HALL.minZ, HALL.maxZ, LDOOR.z0, LDOOR.z1, LOUNGE_WALL);
   const loungePivot = new THREE.Group();
   loungePivot.position.set(5.4, 0, LDOOR.z0);
   room.add(loungePivot);
@@ -145,9 +182,6 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
   }
   const loungeDoor = { open: false, swing: 0 };
   interactive(loungePivot, 'loungeDoor', () => (loungeDoor.open ? 'Close the lounge door' : 'Open the lounge door'), () => { loungeDoor.open = !loungeDoor.open; });
-  const loungeLight = new THREE.PointLight('#fff1dc', 14, 12, 2);
-  loungeLight.position.set(8.9, 2.6, 0.6);
-  room.add(loungeLight);
 
   // ── the shared workstation: three desks facing the glass ──
   const coDesk = new THREE.Group();
@@ -172,6 +206,17 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
   interactive(coDesk, 'codesk', 'Sit and code with your friends', () => onSit(CO_DESK));
   collide(6.05, 11.75, -3, DESK_Z + 0.4);
   collide(CO_DESK.x - 0.28, CO_DESK.x + 0.28, SEAT_Z - 0.26, SEAT_Z + 0.3);
+  // desk dividers and a strip of planters along the glass
+  for (const x of [7.9, 9.9]) box(0.03, 0.42, 0.7, '#8fb8a8', x, 0.99, DESK_Z, room, { r: 0.012 });
+  for (const x of [6.0, 7.9, 9.9, 11.8]) add(new THREE.SphereGeometry(0.12, 14, 12), mat('#5d9c6b'), x, 0.5, -2.86).scale.set(1.3, 1, 0.9);
+  box(6.2, 0.14, 0.2, '#e8e6e2', 8.9, 0.42, -2.86, room, { r: 0.03 });
+  // pendant lamps over the desks
+  for (const x of [6.9, 8.9, 10.9]) {
+    cyl(0.004, 0.004, 0.75, BLACK, x, H - 0.375, -2.2);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 18, 14), new THREE.MeshBasicMaterial({ color: '#ffe2b0' }));
+    bulb.position.set(x, H - 0.8, -2.2);
+    room.add(bulb);
+  }
 
   // ── friends ──
   const friends = FRIENDS.map((spec, index) => {
@@ -249,29 +294,65 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
   }
   friends.forEach(drawFriendScreen);
 
-  // ── the rest of the lounge ──
-  const couch = new THREE.Group();
-  room.add(couch);
-  box(2.2, 0.3, 0.85, '#7d8a6a', 10.4, 0.3, 4.45, couch, { r: 0.09 });
-  box(2.2, 0.55, 0.22, '#7d8a6a', 10.4, 0.64, 4.82, couch, { r: 0.09 });
-  for (const x of [9.26, 11.54]) box(0.2, 0.42, 0.85, '#6c7a5a', x, 0.48, 4.45, couch, { r: 0.08 });
-  box(0.46, 0.34, 0.14, '#f2c57c', 9.85, 0.66, 4.62, couch, { r: 0.065 }).rotation.x = 0.25;
-  collide(9.15, 11.65, 4.0, LOUNGE.maxZ);
-  cyl(0.45, 0.45, 0.05, WALNUT, 10.4, 0.4, 3.3);
-  cyl(0.04, 0.04, 0.38, BLACK, 10.4, 0.19, 3.3);
-  collide(10.0, 10.8, 2.9, 3.7);
-  const rug = add(new THREE.CircleGeometry(1.5, 40), mat('#d8cdbd', DECAL), 10.4, 0.008, 3.5);
-  rug.rotation.x = -Math.PI / 2;
-  plant(12.0, -2.5, 1.2);
-  plant(5.85, 2.75, 1.1);
-  // pendant lamps over the desks
-  for (const x of [6.9, 8.9, 10.9]) {
-    cyl(0.004, 0.004, 0.75, BLACK, x, H - 0.375, -2.2);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 18, 14), new THREE.MeshBasicMaterial({ color: '#ffe2b0' }));
-    bulb.position.set(x, H - 0.8, -2.2);
-    room.add(bulb);
+  // ── TV corner on the west wall: screen, console, sofa facing it, rug and table ──
+  const tv = createTV({ THREE, kit, parent: room, x: 5.53, y: 1.42, z: 1.5, turn: Math.PI / 2, width: 1.6 });
+  box(0.36, 0.42, 1.9, WALNUT, 5.7, 0.21, 1.5, room);
+  box(0.3, 0.05, 0.2, '#2a2a2f', 5.68, 0.45, 2.1, room, { r: 0.01 });
+  collide(5.5, 5.9, 0.5, 2.5);
+  interactive(tv.group, 'loungeTv', () => (tv.state.on ? 'Turn the TV off' : 'Turn the TV on'), () => tv.toggle());
+  const tvSofa = sofa(8.05, 1.5, -Math.PI / 2, '#7d8a6a', '#6c7a5a', '#f2c57c');
+  interactive(tvSofa, 'loungeSofa', 'Sit and watch TV', () => onWatch(tv, [7.95, 1.08, 1.5], [5.53, 1.4, 1.5]));
+  collide(7.55, 8.55, 0.4, 2.6);
+  box(2.6, 0.012, 2.6, '#d8cdbd', 6.9, 0.008, 1.5, room, { r: 0.005, ...DECAL });
+  cyl(0.42, 0.42, 0.05, WALNUT, 6.85, 0.38, 1.5);
+  cyl(0.04, 0.04, 0.36, BLACK, 6.85, 0.18, 1.5);
+  collide(6.5, 7.2, 1.15, 1.85);
+  label('stay cozy, ship often', 2.0, 0.34, 5.505, 2.05, -1.4, Math.PI / 2, { bg: '#e6e3de', fg: '#e2674a', size: 24 });
+  plant(5.85, -0.45, 1.1);
+
+  // ── pantry along the south wall ──
+  const pantry = new THREE.Group();
+  room.add(pantry);
+  box(2.9, 0.9, 0.6, '#f1f0ee', 7.75, 0.45, 4.68, pantry);
+  box(2.96, 0.04, 0.64, WALNUT, 7.75, 0.92, 4.67, pantry, { r: 0.012 });
+  box(0.5, 0.02, 0.36, '#c9ccd1', 6.8, 0.945, 4.66, pantry, { ...CHROME, r: 0.008 });           // sink
+  cyl(0.012, 0.012, 0.22, '#d5d7db', 6.8, 1.05, 4.88, pantry, CHROME);
+  box(0.26, 0.34, 0.3, '#2b2b33', 7.6, 1.11, 4.72, pantry);                                    // filter coffee
+  cyl(0.07, 0.06, 0.13, '#3b2314', 7.6, 1.0, 4.58, pantry, { transparent: true, opacity: 0.85 });
+  cyl(0.16, 0.11, 0.07, '#e8e6e2', 8.4, 0.975, 4.6, pantry);                                   // fruit bowl
+  for (const [dx, dz, color] of [[-0.05, 0, '#e25c4a'], [0.05, 0.03, '#f2c14e'], [0, -0.05, '#7cb46b']]) add(new THREE.SphereGeometry(0.045, 12, 10), mat(color), 8.4 + dx, 1.02, 4.6 + dz, pantry);
+  box(2.9, 0.04, 0.26, WALNUT, 7.75, 1.7, 4.86, pantry, { r: 0.012 });                         // mug shelf
+  ['#f28b82', '#e8e6e2', '#8fb8a8', '#d9a441', '#7f9fc4', '#e8e6e2'].forEach((color, i) => cyl(0.04, 0.035, 0.09, color, 6.6 + i * 0.4, 1.765, 4.86, pantry));
+  box(0.72, 1.9, 0.66, '#c9ccd1', 9.62, 0.95, 4.66, pantry, { ...CHROME, r: 0.03 });           // fridge
+  box(0.02, 0.5, 0.03, '#8f9399', 9.34, 1.25, 4.32, pantry, { r: 0.008 });
+  interactive(pantry, 'pantry', 'Grab a snack', () => onSnack());
+  collide(6.25, 10.0, 4.3, LOUNGE.maxZ);
+
+  // ── high table and stools ──
+  cyl(0.5, 0.5, 0.05, WALNUT, 10.75, 1.05, 0.7);
+  cyl(0.04, 0.04, 1.02, BLACK, 10.75, 0.52, 0.7);
+  cyl(0.3, 0.3, 0.03, BLACK, 10.75, 0.015, 0.7);
+  for (const [x, z] of [[10.05, 0.7], [11.45, 0.7]]) {
+    cyl(0.17, 0.17, 0.06, '#2a2a2f', x, 0.72, z);
+    cyl(0.025, 0.025, 0.7, '#55555f', x, 0.36, z);
+    cyl(0.18, 0.18, 0.02, '#101014', x, 0.01, z);
   }
-  // whiteboard with the sprint on it
+  collide(9.85, 11.65, 0.2, 1.2);
+
+  // ── bean-bag corner with a walnut slat wall ──
+  for (const [x, z, color] of [[10.9, 4.45, '#e2674a'], [11.8, 4.2, '#4f8fbf']]) {
+    const bag = add(new THREE.SphereGeometry(0.42, 22, 16), mat(color), x, 0.27, z);
+    bag.scale.set(1, 0.62, 1);
+    add(new THREE.SphereGeometry(0.26, 18, 14), mat(color), x, 0.52, z + 0.2).scale.set(1.1, 0.8, 0.7);
+  }
+  collide(10.45, 12.25, 3.85, LOUNGE.maxZ);
+  for (let i = 0; i < 24; i++) box(0.05, H - 0.24, 0.035, WALNUT, 10.35 + i * 0.085, H / 2 + 0.06, 4.98, room, { r: 0.008 });
+  cyl(0.15, 0.17, 0.03, BLACK, 12.1, 0.015, 3.9);
+  cyl(0.015, 0.015, 1.5, BLACK, 12.1, 0.75, 3.9);
+  const shade = add(new THREE.CylinderGeometry(0.13, 0.22, 0.28, 20, 1, true), mat('#ffe2b0', { emissive: '#ffb86b', emissiveIntensity: 0.9, side: THREE.DoubleSide }), 12.1, 1.58, 3.9);
+  shade.renderOrder = 1;
+
+  // ── whiteboard with the sprint on it, and the way to the WC ──
   const board = canvasTexture(512, 300, (g, w, h) => {
     g.fillStyle = '#fafafa'; g.fillRect(0, 0, w, h);
     g.strokeStyle = '#c9c9cc'; g.lineWidth = 2;
@@ -289,7 +370,9 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
   boardMesh.rotation.y = -Math.PI / 2;
   room.add(boardMesh);
   box(0.02, 1.37, 2.28, '#c9ccd1', 12.4, 1.6, 1.2, room, { r: 0.008 });
-  label('stay cozy, ship often', 2.0, 0.34, 5.505, 2.0, 0.2, Math.PI / 2, { bg: '#e6e3de', fg: '#e2674a', size: 24 });
+  label('WC', 0.3, 0.16, 12.395, 2.3, (LOUNGE_BATH.doorZ0 + LOUNGE_BATH.doorZ1) / 2, -Math.PI / 2, { bg: '#2a2a2f', size: 70 });
+  plant(12.0, -2.5, 1.2);
+  const loungeBath = createBathroom({ THREE, room, kit, wallX: 12.6, dir: 1, ...LOUNGE_BATH, shower: false, key: 'loungeBath', onUse: (kind) => onFreshen(kind, loungeBath) });
 
   // ── walking ──
   const zones = [
@@ -298,19 +381,25 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
     { minX: HALL.minX, maxX: HALL.maxX - 0.1, minZ: HALL.minZ, maxZ: HALL.maxZ },
     { minX: 4.8, maxX: 6.0, minZ: LDOOR.z0, maxZ: LDOOR.z1, pad: 0.1, gate: () => loungeDoor.swing > 0.8 },
     { minX: LOUNGE.minX + 0.1, maxX: LOUNGE.maxX, minZ: LOUNGE.minZ, maxZ: LOUNGE.maxZ },
+    ...homeBath.zones,
+    ...loungeBath.zones,
   ];
-  const inLounge = (p) => p.x > LOUNGE.minX && p.z < LOUNGE.maxZ;
+  const inLounge = (p) => p.x > LOUNGE.minX && p.x < LOUNGE.maxX + 0.2 && p.z < LOUNGE.maxZ;
 
   let chatter = 6, redraw = 0;
   const tmp = new THREE.Vector3();
-  function update(dt, t, { player, hour, camera, hideBubbles }) {
+  // `showering` is the bathroom currently in use, if any
+  function update(dt, t, { player, hour, camera, hideBubbles, showering }) {
     door.swing += ((door.open ? 1 : 0) - door.swing) * Math.min(1, dt * 6);
     doorPivot.rotation.y = -door.swing * 1.5;
     loungeDoor.swing += ((loungeDoor.open ? 1 : 0) - loungeDoor.swing) * Math.min(1, dt * 6);
     loungePivot.rotation.y = loungeDoor.swing * 1.5;
+    homeBath.update(dt, t, showering === homeBath);
+    loungeBath.update(dt, t, false);
 
     const working = hour >= 8 && hour < 20;
     const near = inLounge(player);
+    tv.update(dt, near);
     redraw -= dt;
     chatter -= dt;
     if (near && working && chatter <= 0) {
@@ -346,5 +435,5 @@ export function createBuilding({ THREE, room, kit, screenTexture, getTicket, onS
     if (redraw <= 0) redraw = 0.55;
   }
 
-  return { zones, update, inLounge, door, loungeDoor, friends };
+  return { zones, update, inLounge, door, loungeDoor, homeBath, loungeBath, friends, tv };
 }

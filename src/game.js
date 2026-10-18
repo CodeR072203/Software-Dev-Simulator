@@ -4,6 +4,7 @@ import { ranks, tickets } from './tickets.js';
 import { createIDE } from './ide.js';
 import { createDesktop } from './desktop.js';
 import { createBuilding } from './building.js';
+import { createTV } from './tv.js';
 import { createBarista } from './barista.js';
 
 const $ = (id) => document.getElementById(id);
@@ -14,7 +15,7 @@ const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t
 const SAVE_KEY = 'cozy-dev-sim-v2';
 const FRESH = () => ({
   day: 1, hour: 9, energy: 85, cozy: 40, xp: 0, commits: 0,
-  ticket: 0, drafts: {}, coffee: 0, cup: null, raining: false, lampOn: true, radioOn: false,
+  ticket: 0, drafts: {}, coffee: 0, snacks: 0, cup: null, raining: false, lampOn: true, radioOn: false,
 });
 const S = Object.assign(FRESH(), loadSave());
 
@@ -77,7 +78,8 @@ function add(geo, material, x, y, z, parent = room) {
 // furniture: a box with softened edges (pass `r` to override the corner radius)
 function box(w, h, d, color, x, y, z, parent = room, { r, ...opts } = {}) {
   const radius = r ?? Math.min(0.03, Math.min(w, h, d) * 0.4);
-  return add(new RoundedBoxGeometry(w, h, d, 4, radius), mat(color, opts), x, y, z, parent);
+  // small bevels need few segments; only soft things like cushions get the smoother (and heavier) corners
+  return add(new RoundedBoxGeometry(w, h, d, radius > 0.04 ? 4 : 2, radius), mat(color, opts), x, y, z, parent);
 }
 // architecture: a plain sharp box
 function slab(w, h, d, color, x, y, z) {
@@ -144,7 +146,6 @@ floor.rotation.x = -Math.PI / 2;
 
 // walls + ceiling
 slab(W * 2 + 0.4, 0.2, D * 2 + 0.4, '#d9d7d3', 0, H + 0.1, 0);
-slab(0.2, H, D * 2, wallColor, -W - 0.1, H / 2, 0);
 slab(0.2, H, D * 2, wallColor, W + 0.1, H / 2, 0);
 // (the front wall, with its door, is built by building.js)
 // back wall with window opening
@@ -153,7 +154,7 @@ slab(W - WIN.x1, H, 0.2, wallColor, (W + WIN.x1) / 2, H / 2, -D - 0.1);
 slab(WIN.x1 - WIN.x0, WIN.y0, 0.2, wallColor, (WIN.x0 + WIN.x1) / 2, WIN.y0 / 2, -D - 0.1);
 slab(WIN.x1 - WIN.x0, H - WIN.y1, 0.2, wallColor, (WIN.x0 + WIN.x1) / 2, (H + WIN.y1) / 2, -D - 0.1);
 // baseboards
-for (const [w, d, x, z] of [[W * 2, 0.04, 0, D - 0.02], [W * 2, 0.04, 0, -D + 0.02], [0.04, D * 2, -W + 0.02, 0], [0.04, D * 2, W - 0.02, 0]]) {
+for (const [w, d, x, z] of [[W * 2, 0.04, 0, -D + 0.02], [0.04, D * 2, W - 0.02, 0]]) {
   box(w, 0.12, d, '#0c0c0e', x, 0.06, z);
 }
 
@@ -184,9 +185,9 @@ box(0.4, 0.3, 0.14, '#e8e6e2', WIN.x1 - 0.45, 0.62, -D + 0.12, bench, { r: 0.065
 collide(WIN.x0, WIN.x1, -D, -D + 0.55);
 
 // rug
-const rug = add(new THREE.CircleGeometry(1.35, 40), mat('#3a3a40', DECAL), 0, 0.012, 0.5);
+const rug = add(new THREE.CircleGeometry(1.35, 40), mat('#3a3a40', DECAL), 1.1, 0.012, 1.6);
 rug.rotation.x = -Math.PI / 2;
-const rugIn = add(new THREE.RingGeometry(0.85, 0.95, 40), mat('#8c8f96', { ...DECAL, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 0, 0.018, 0.5);
+const rugIn = add(new THREE.RingGeometry(0.85, 0.95, 40), mat('#8c8f96', { ...DECAL, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 1.1, 0.018, 1.6);
 rugIn.rotation.x = -Math.PI / 2;
 
 // bed
@@ -331,16 +332,20 @@ collide(...barista.collider);
 // walnut slat panel on the wall beside the bed
 for (let i = 0; i < 27; i++) box(0.035, H - 0.24, 0.05, '#6e4a32', -W + 0.02, H / 2 + 0.06, 0.72 + i * 0.085, room, { r: 0.008 });
 
-// sofa against the front wall
+// sofa in the middle of the room, facing the TV on the front wall
 const sofa = new THREE.Group();
+sofa.position.set(1.1, 0, 0.95);
 room.add(sofa);
-box(2.0, 0.3, 0.85, '#55585f', 1.1, 0.3, 2.5, sofa, { r: 0.09 });
-box(2.0, 0.55, 0.22, '#55585f', 1.1, 0.64, 2.86, sofa, { r: 0.09 });
-for (const x of [0.06, 2.14]) box(0.2, 0.42, 0.85, '#4a4d55', x, 0.48, 2.5, sofa, { r: 0.08 });
-box(0.46, 0.34, 0.14, '#d9a441', 0.55, 0.66, 2.66, sofa, { r: 0.065 }).rotation.x = 0.25;
-box(0.46, 0.34, 0.14, '#e8e6e2', 1.65, 0.66, 2.66, sofa, { r: 0.065 }).rotation.x = 0.25;
-for (const [x, z] of [[0.15, 2.15], [2.05, 2.15], [0.15, 2.85], [2.05, 2.85]]) cyl(0.022, 0.018, 0.14, '#0e0e10', x, 0.07, z, sofa);
-collide(-0.05, 2.25, 2.05, D);
+box(2.0, 0.3, 0.85, '#55585f', 0, 0.3, 0, sofa, { r: 0.09 });
+box(2.0, 0.55, 0.22, '#55585f', 0, 0.64, -0.36, sofa, { r: 0.09 });
+for (const x of [-1.04, 1.04]) box(0.2, 0.42, 0.85, '#4a4d55', x, 0.48, 0, sofa, { r: 0.08 });
+box(0.46, 0.34, 0.14, '#d9a441', -0.55, 0.66, -0.17, sofa, { r: 0.065 }).rotation.x = -0.25;
+box(0.46, 0.34, 0.14, '#e8e6e2', 0.55, 0.66, -0.17, sofa, { r: 0.065 }).rotation.x = -0.25;
+collide(-0.08, 2.28, 0.45, 1.42);
+const tvHome = createTV({ THREE, kit: { box, canvasTexture }, parent: room, x: 1.1, y: 1.4, z: D - 0.03, turn: Math.PI, width: 1.6 });
+box(1.9, 0.4, 0.36, '#6e4a32', 1.1, 0.2, D - 0.2);
+box(0.3, 0.05, 0.2, '#2a2a2f', 1.75, 0.43, D - 0.2, room, { r: 0.01 });
+collide(0.1, 2.1, D - 0.42, D);
 
 // poster
 const poster = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.75), new THREE.MeshStandardMaterial({
@@ -355,8 +360,8 @@ const poster = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.75), new THREE.Mesh
   }),
 }));
 Object.assign(poster.material, DECAL);
-poster.position.set(-W + 0.012, 1.75, -0.6);
-poster.rotation.y = Math.PI / 2;
+poster.position.set(W - 0.012, 1.75, -1.0);
+poster.rotation.y = -Math.PI / 2;
 room.add(poster);
 
 // recessed ceiling downlights and a warm LED cove above the glass
@@ -379,12 +384,15 @@ const building = createBuilding({
   getTicket: () => ide.view().ticket,
   onSit: (desk) => sitAt(desk.x, desk.z, true),
   onChat: () => { S.cozy = clamp(S.cozy + 4, 0, 100); },
+  onWatch: watchTV,
+  onFreshen: freshen,
+  onSnack: snack,
   toast,
 });
 
 // cat (its nose points along local +x)
 const cat = new THREE.Group();
-cat.position.set(0.5, 0, 0.9);
+cat.position.set(-1.3, 0, 0.1);
 cat.rotation.y = -0.6;
 room.add(cat);
 const catBodyGroup = new THREE.Group();
@@ -849,7 +857,7 @@ function updateAudio() {
   if (!actx) return;
   const target = S.raining ? (mode === 'window' ? 0.16 : 0.08) : 0;
   rainGain.gain.value += (target - rainGain.gain.value) * 0.05;
-  const fx = FX[barista.state.sound];
+  const fx = FX[showering ? 'water' : barista.state.sound];
   if (fx) { fxFilter.type = fx[0]; fxFilter.frequency.value = fx[1]; }
   fxGain.gain.value += ((fx ? fx[2] : 0) - fxGain.gain.value) * 0.2;
   if (S.radioOn && actx.currentTime > nextChordAt - 0.2) {
@@ -862,7 +870,7 @@ function updateAudio() {
 }
 
 // ───────────────────────── player ─────────────────────────
-const player = { pos: new THREE.Vector3(0, 1.6, 1.6), yaw: 0, pitch: -0.05, bob: 0 };
+const player = { pos: new THREE.Vector3(-1.0, 1.6, 1.2), yaw: 0, pitch: -0.05, bob: 0 };
 const keys = new Set();
 let mode = 'walk'; // walk | pc | window | sleep | barista
 let arrived = true;
@@ -872,6 +880,8 @@ const POSES = {
   window: { pos: new THREE.Vector3(winCx, 1.55, -2.35), look: new THREE.Vector3(winCx, 3, -40) },
   sleep: { pos: new THREE.Vector3(-3.25, 0.9, 2.3), look: new THREE.Vector3(-2.2, 2.9, -1.5) },
   barista: { pos: new THREE.Vector3(2.72, 1.36, 2.24), look: new THREE.Vector3(3.75, 1.1, 2.24) },
+  tv: { pos: new THREE.Vector3(), look: new THREE.Vector3() },     // set by watchTV
+  shower: { pos: new THREE.Vector3(), look: new THREE.Vector3() }, // set by freshen
 };
 // sit at a desk whose top is centred on (x, z); `friends` is true at the shared workstation
 let withFriends = false;
@@ -880,6 +890,56 @@ function sitAt(x, z, friends) {
   POSES.pc.look.set(x, 1.17, z - 0.25);
   withFriends = friends;
   setMode('pc');
+}
+// sit on a sofa and watch `tv`; `eye` and `look` are [x, y, z]
+let watching = null;
+function watchTV(tv, eye, look) {
+  POSES.tv.pos.fromArray(eye);
+  POSES.tv.look.fromArray(look);
+  watching = tv;
+  if (!tv.state.on) tv.toggle();
+  setMode('tv');
+}
+
+// bathrooms: `kind` is 'sink', 'toilet' or 'shower'
+let showering = null;
+function freshen(kind, bath) {
+  if (kind === 'sink') {
+    S.energy = clamp(S.energy + 3, 0, 100);
+    S.cozy = clamp(S.cozy + 2, 0, 100);
+    toast('Cold water on your face. Awake again. (+3 energy)');
+  } else if (kind === 'toilet') {
+    S.cozy = clamp(S.cozy + 1, 0, 100);
+    toast('Much better.');
+  } else if (!showering) {
+    showering = bath;
+    POSES.shower.pos.fromArray(bath.showerPose.pos);
+    POSES.shower.look.fromArray(bath.showerPose.look);
+    initAudio();
+    setMode('shower');
+    setTimeout(() => { $('fadeText').textContent = 'a long, hot shower\u2026'; $('fade').classList.add('on'); }, 2600);
+    setTimeout(() => {
+      S.hour += 0.4;
+      S.energy = clamp(S.energy + 18, 0, 100);
+      S.cozy = clamp(S.cozy + 15, 0, 100);
+      save();
+    }, 4200);
+    setTimeout(() => {
+      $('fade').classList.remove('on');
+      showering = null;
+      setMode('walk');
+      toast('Fresh and warm. (+18 energy, +15 coziness)');
+    }, 5600);
+  }
+}
+
+const SNACKS = ['A banana', 'A handful of trail mix', 'A slightly squashed granola bar', 'An apple'];
+function snack() {
+  if (S.snacks >= 3) return toast('You have raided the pantry enough for one day.');
+  S.snacks++;
+  S.energy = clamp(S.energy + 6, 0, 100);
+  S.cozy = clamp(S.cozy + 2, 0, 100);
+  toast(`${SNACKS[Math.floor(Math.random() * SNACKS.length)]} from the pantry. (+6 energy)`);
 }
 const poseCam = new THREE.PerspectiveCamera();
 const targetPos = new THREE.Vector3(), targetQuat = new THREE.Quaternion(), lookAt = new THREE.Vector3(), tmpV = new THREE.Vector3();
@@ -1018,7 +1078,7 @@ function setMode(next) {
   if (next !== 'walk' && document.pointerLockElement) document.exitPointerLock();
   if (next === 'pc') desktop.show(); else desktop.hide();
   document.body.classList.toggle('at-pc', next === 'pc');
-  $('caption').classList.toggle('on', next === 'window');
+  $('caption').classList.toggle('on', next === 'window' || next === 'tv');
   $('crosshair').style.display = next === 'walk' ? '' : 'none';
   if (next === 'pc') {
     ide.open();
@@ -1029,13 +1089,14 @@ function setMode(next) {
   if (next !== 'barista' && barista.state.open) barista.close();
   $('hud').style.opacity = next === 'barista' ? 0.35 : '';
   if (next === 'window') $('caption').textContent = windowCaption();
+  if (next === 'tv') $('caption').textContent = 'A / D to change channel \u00b7 Esc to get up';
   refreshHint();
 }
 function refreshHint() {
   $('clickHint').style.display = mode === 'walk' && !document.pointerLockElement ? '' : 'none';
   $('help').style.display = mode === 'walk' ? '' : 'none';
 }
-function leave() { if (mode === 'pc' || mode === 'window' || mode === 'barista') setMode('walk'); }
+function leave() { if (['pc', 'window', 'barista', 'tv'].includes(mode)) setMode('walk'); }
 
 function windowCaption() {
   const night = day < 0.3, dusk = day >= 0.3 && day < 0.9;
@@ -1052,6 +1113,7 @@ function windowCaption() {
 function newDay() {
   S.day++;
   S.coffee = 0;
+  S.snacks = 0;
   S.raining = Math.random() < 0.4;
 }
 
@@ -1097,7 +1159,7 @@ function cupReady({ name, quality, stars, sips, energy, cozy, milk, note, decaf 
 }
 
 function sip() {
-  if (!S.cup || sipAnim > 0 || (mode !== 'walk' && mode !== 'window')) return;
+  if (!S.cup || sipAnim > 0 || !['walk', 'window', 'tv'].includes(mode)) return;
   sipAnim = 1;
   S.energy = clamp(S.energy + S.cup.energy, 0, 100);
   S.cozy = clamp(S.cozy + S.cup.cozy, 0, 100);
@@ -1110,7 +1172,7 @@ function sip() {
 function updateCoffee(dt, t) {
   barista.update(dt, t);
   // the cup in your hand
-  hand.visible = !!S.cup && (mode === 'walk' || mode === 'window');
+  hand.visible = !!S.cup && ['walk', 'window', 'tv'].includes(mode);
   if (hand.visible) {
     sipAnim = Math.max(0, sipAnim - dt / 1.4);
     const lift = Math.sin((1 - sipAnim) * Math.PI) * (sipAnim > 0 ? 1 : 0);
@@ -1211,6 +1273,8 @@ interactive(barista.group, 'coffee', () => (S.cup ? 'Finish your cup first (Q to
   setMode('barista');
   barista.open(S.coffee >= 3);
 });
+interactive(tvHome.group, 'tv', () => (tvHome.state.on ? 'Turn the TV off' : 'Turn the TV on'), () => tvHome.toggle());
+interactive(sofa, 'sofa', 'Sit and watch TV', () => watchTV(tvHome, [1.1, 1.08, 1.0], [1.1, 1.38, D]));
 interactive(cat, 'cat', 'Pet the cat', () => {
   S.cozy = clamp(S.cozy + 10, 0, 100);
   catAI.purr = 2.5;
@@ -1232,6 +1296,13 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (e.code === 'KeyQ') sip();
+  if (mode === 'tv') {
+    if (e.code === 'Escape' || e.code === 'KeyE') leave();
+    else if (e.code === 'KeyA' || e.code === 'ArrowLeft') watching.next(-1);
+    else if (e.code === 'KeyD' || e.code === 'ArrowRight') watching.next(1);
+    return;
+  }
+  if (mode === 'shower' || mode === 'sleep') return;
   if (mode === 'window') {
     if (e.code === 'Escape' || e.code === 'KeyE') leave();
     return;
@@ -1330,7 +1401,7 @@ function tick() {
     S.hour += dt / 60;
     if (S.hour >= 24) { S.hour -= 24; newDay(); }
     S.energy = clamp(S.energy - dt * 0.1, 0, 100);
-    const gain = mode === 'window' ? 2 : -0.04 + (S.radioOn ? 0.03 : 0) + (S.raining ? 0.02 : 0) + (building.inLounge(player.pos) ? 0.3 : 0);
+    const gain = mode === 'window' ? 2 : mode === 'tv' ? 1.2 : -0.04 + (S.radioOn ? 0.03 : 0) + (S.raining ? 0.02 : 0) + (building.inLounge(player.pos) ? 0.3 : 0);
     S.cozy = clamp(S.cozy + dt * gain, 0, 100);
   }
 
@@ -1339,7 +1410,8 @@ function tick() {
   updateCat(dt, t);
   updateMetro(dt, t);
   updateCoffee(dt, t);
-  building.update(dt, t, { player: player.pos, hour: S.hour, camera, hideBubbles: mode !== 'walk' });
+  building.update(dt, t, { player: player.pos, hour: S.hour, camera, hideBubbles: mode !== 'walk', showering });
+  tvHome.update(dt, Math.abs(player.pos.x) < 4.2 && Math.abs(player.pos.z) < 3.4);
   focusTimer -= dt;
   if (focusTimer <= 0) { focusKey = findFocus(); focusTimer = 0.08; }
 
@@ -1377,7 +1449,8 @@ window.__cozy = {
   S, ide, barista, desktop, leave, catGo,
   quality: () => quality,
   goto(x, z) { player.pos.x = x; player.pos.z = z; },
-  openDoor(open = true) { building.door.open = building.loungeDoor.open = open; },
+  openDoor(open = true) { for (const d of [building.door, building.loungeDoor, building.homeBath.door, building.loungeBath.door]) d.open = open; },
+  tvNext() { watching.next(1); },
   probe: (points) => points.map(([x, z]) => (blocked(x, z) ? 'X' : 'ok')).join(' '),
   gaze(x, y) { mouse.x = x; mouse.y = y; },
   trainAt(x) { trainState.x = x; trainState.wait = 0; },
