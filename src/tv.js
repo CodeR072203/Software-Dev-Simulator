@@ -1,3 +1,5 @@
+import { drawWallpaper } from './wallpaper.js';
+
 // A wall-mounted TV that actually plays: four little animated channels drawn to a canvas.
 const HEADLINES = [
   'Local dev fixes one bug, discovers two more',
@@ -30,18 +32,8 @@ export function createTV({ THREE, kit, parent, x, y, z, turn, width = 1.5 }) {
   const fish = Array.from({ length: 7 }, (_, i) => ({ y: 50 + i * 28, speed: 22 + ((i * 37) % 30), size: 9 + (i % 3) * 5, hue: (i * 53) % 360, dir: i % 2 ? 1 : -1, phase: i * 61 }));
 
   const scenes = [
-    function sunset(t) {
-      const sky = g.createLinearGradient(0, 0, 0, H);
-      sky.addColorStop(0, '#2b1f5c'); sky.addColorStop(0.5, '#c0527a'); sky.addColorStop(0.8, '#f6a75c'); sky.addColorStop(1, '#ffd98a');
-      g.fillStyle = sky; g.fillRect(0, 0, W, H);
-      g.fillStyle = '#fff1c4'; g.beginPath(); g.arc(W * 0.62, H * 0.62 + Math.sin(t * 0.2) * 6, 34, 0, Math.PI * 2); g.fill();
-      g.fillStyle = 'rgba(255,255,255,0.35)';
-      for (let i = 0; i < 4; i++) { const cx = ((t * (8 + i * 3) + i * 150) % (W + 160)) - 80; g.beginPath(); g.ellipse(cx, 50 + i * 22, 46, 10, 0, 0, Math.PI * 2); g.fill(); }
-      [['#5b2f6b', 0.7, 14, 26], ['#3a1f52', 0.8, 26, 20], ['#1f1238', 0.9, 44, 14]].forEach(([color, base, speed, amp], layer) => {
-        g.fillStyle = color; g.beginPath(); g.moveTo(0, H);
-        for (let px = 0; px <= W; px += 12) g.lineTo(px, H * base + Math.sin((px + t * speed) * 0.018 + layer * 2) * amp + Math.sin((px + t * speed) * 0.05) * amp * 0.3);
-        g.lineTo(W, H); g.fill();
-      });
+    function photo() {
+      drawWallpaper(g, W, H);
     },
     function news(t) {
       g.fillStyle = '#10244a'; g.fillRect(0, 0, W, H);

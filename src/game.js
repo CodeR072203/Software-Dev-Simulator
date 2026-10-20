@@ -1,3 +1,4 @@
+import { wallpaper, drawWallpaper } from './wallpaper.js';
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { ranks, tickets } from './tickets.js';
@@ -1210,9 +1211,7 @@ const desktop = createDesktop({ S, onRadio: toggleRadio });
 // macOS-style wallpaper, menu bar, dock and one window, sized to whichever display it is drawn on
 function macWindow(g, app, title, fill) {
   const w = g.canvas.width, h = g.canvas.height;
-  const wall = g.createLinearGradient(0, 0, w, h);
-  wall.addColorStop(0, '#2b1f5c'); wall.addColorStop(0.4, '#7a3b8f'); wall.addColorStop(0.7, '#e0637a'); wall.addColorStop(1, '#f6a75c');
-  g.fillStyle = wall; g.fillRect(0, 0, w, h);
+  drawWallpaper(g, w, h);
   g.fillStyle = 'rgba(30,20,50,0.45)'; g.fillRect(0, 0, w, 15);
   g.fillStyle = '#ffffff'; g.font = 'bold 10px Segoe UI, sans-serif'; g.fillText(app, 22, 11);
   g.font = '10px Segoe UI, sans-serif'; g.fillText('File   Edit   View   Window   Help', 30 + app.length * 6.5, 11);
@@ -1224,6 +1223,8 @@ function macWindow(g, app, title, fill) {
   ['#ff5f57', '#febc2e', '#28c840'].forEach((c, i) => { g.fillStyle = c; g.beginPath(); g.arc(25 + i * 13, 34, 4, 0, Math.PI * 2); g.fill(); });
   g.fillStyle = '#a0a0a0'; g.font = '11px Segoe UI, sans-serif'; g.textAlign = 'center'; g.fillText(title, w / 2, 38); g.textAlign = 'left';
 }
+
+wallpaper.addEventListener('load', () => drawScreens());
 
 function drawScreens() {
   const { ticket, code, lastRun } = ide.view();
